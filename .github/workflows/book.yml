@@ -32,7 +32,7 @@ jobs:
           cache: pip
 
       - name: Install deps
-        run: pip install typer requests beautifulsoup4 lxml rich
+        run: pip install -r requirements.txt
 
       - name: Compute target date
         id: dates
