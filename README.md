@@ -1,27 +1,37 @@
 # psfc-book
 
+> _"Be patient, wait for them to ripen. Be brave and try something new."_
+> — laminated sign in the Park Slope Food Coop produce aisle, on the
+> matter of fresh dates
+
 Books a Park Slope Food Coop orientation slot on your behalf, at the
 exact moment slots are released, with the technical urgency of a flash
 sale and none of the dignity.
 
-The Coop releases a small batch of orientation appointments twice a
-week, on Mondays and Thursdays at 7 PM Eastern. The releases last about
-two to three seconds. This repository is a Python CLI that logs in,
-waits to the millisecond, and grabs the first open slot. There is also
-a parallel forensics mode (`scout`) which records every byte of every
-response, so that when the booking attempt fails — and eventually one
-will — the next session can begin with evidence rather than vibes.
+We have lived a short walk from the Coop for over a year. We have not
+yet been to an orientation. The Coop releases a small batch of
+appointments twice a week, on Mondays and Thursdays at 7 PM Eastern;
+they last about two to three seconds. This repository is a Python CLI
+that logs in, waits to the millisecond, and grabs the first open slot.
+There is also a parallel forensics mode (`scout`), which records every
+byte of every response, so that when the booking attempt fails — and
+prior experience suggests it will — the next session can begin with
+evidence rather than vibes.
 
 ## How it works
 
 `ort.foodcoop.com` is a server-rendered Django app, in roughly the same
 sense that your aunt's quilting blog is a server-rendered blog: a
 session cookie, a CSRF token, a `<form>`, and not a byte of JSON in
-sight. Slots live behind
-`/calendar/<week>/<committee>/<time>/<anchor>/` and render as
-`<div class="shift ...">` cells in a 7-column grid. Open slots have no
-state class. Everything else has a class describing what is wrong with
-it.
+sight. This is broadly in keeping with an institution whose internal
+newsletter is called the _Linewaiters' Gazette_ and whose monthly
+General Meeting still runs on Robert's Rules; only the orientation
+intake, for some reason, is conducted at flash-sale speed.
+
+Slots live behind `/calendar/<week>/<committee>/<time>/<anchor>/` and
+render as `<div class="shift ...">` cells in a 7-column grid. Open
+slots have no state class. Everything else has a class describing what
+is wrong with it.
 
 Booking is two HTTP requests: GET the calendar to find an open shift's
 URL, then POST to that URL with the CSRF token to claim it. The script
@@ -172,12 +182,19 @@ requirements.txt               typer, requests, beautifulsoup4, lxml, rich
 ## Caveats
 
 - The Coop is a cooperative. This script is for booking _your own_
-  orientation. Running parallel attempts to grab several slots would be,
-  among other things, a poor demonstration of cooperative spirit.
+  orientation. Running parallel attempts to grab several slots would
+  be, among other things, not in the spirit of coöperation.
+- The orientation is the first step of a process involving a 2.75-hour
+  work shift every four weeks, the household-membership rule, monthly
+  General Meetings conducted under Robert's Rules, and the
+  _Linewaiters' Gazette_. This script cannot help with any of them.
 - GitHub Actions cron triggers can be delayed by 5 to 30 minutes during
   busy periods. We schedule 30 minutes early and busy-wait. Do not
   tighten this without first imagining the consequences vividly.
 - The `book` workflow's cron will run every Monday and Thursday until
-  disabled, including weeks when nothing is released. Each pointless run
-  costs approximately one second of compute, which is to say nothing.
-- This software exists. Whether it should is a separate question.
+  disabled, including weeks when nothing is released. Each pointless
+  run costs approximately one second of compute, which is to say
+  nothing.
+- This software exists. Whether it should is a separate question, and
+  one which would, in an appropriate venue, take ninety minutes to
+  resolve.
