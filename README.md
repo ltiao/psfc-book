@@ -15,9 +15,11 @@ two forms of ID; paying a joining fee and a refundable equity
 investment; posing for a membership-card photograph; signing two
 policy agreements; and scheduling a first work shift. Of these, only
 the appointment must be scheduled in advance, and only on this
-website. The Coop releases a small batch of appointments twice a week,
-on Mondays and Thursdays at 7 PM Eastern; they last about two to three
-seconds. This repository is a Python CLI that logs in, waits to the
+website. The Coop releases a tiny batch — about ten appointments —
+sporadically, often two or three months apart, occasionally in
+clusters of two or three releases over a fortnight. Each release
+happens at 7 PM Eastern and lasts about two to three seconds. This
+repository is a Python CLI that logs in, waits to the
 millisecond, and grabs the first open slot. There is also a parallel
 forensics mode (`scout`), which records every byte of every response,
 so that when the booking attempt fails — and prior experience suggests
@@ -46,10 +48,12 @@ exactly 19:00:00 ET, and writes everything down for posterity.
 ## Quick start — GitHub Actions
 
 The cron in `.github/workflows/book.yml` fires every Monday and Thursday
-at 22:30 UTC. The script's `--fire-at` flag busy-waits internally until
-19:00:00 America/New_York, so GitHub Actions' famously imprecise
-scheduling is a non-issue, provided the workflow has begun by 7 PM. So
-far it has.
+at 22:30 UTC. Most of these firings will find nothing released and exit
+quietly within a few seconds, on the theory that being awake on the
+day in question is cheaper than predicting it. The script's `--fire-at`
+flag busy-waits internally until 19:00:00 America/New_York, so GitHub
+Actions' famously imprecise scheduling is a non-issue, provided the
+workflow has begun by 7 PM. So far it has.
 
 ```bash
 gh repo create psfc-book --private --source=. --push
@@ -144,10 +148,17 @@ the slot is gone.
 
 ## Release timing
 
-| Orientation day | Release window |
-|---|---|
-| Wednesday | Thursday 7 PM ET, 13 days prior |
-| Sunday    | Monday 7 PM ET, 13 days prior   |
+Releases are not on a public schedule. When one is coming up, the
+home page at <https://ort.foodcoop.com/> lists it under "Upcoming
+Orientations" with the precise minute slots will become claimable.
+Empirically, releases happen 13 days before the orientation, at 7 PM
+ET, and orientations themselves run on Wednesday mornings or Sunday
+afternoons:
+
+| Orientation day | Release window                  |
+|---               |---                              |
+| Wednesday        | Thursday 7 PM ET, 13 days prior |
+| Sunday           | Monday 7 PM ET, 13 days prior   |
 
 `--target` is always today plus 13 days. The workflow computes this:
 
@@ -200,9 +211,9 @@ requirements.txt               typer, requests, beautifulsoup4, lxml, rich
   busy periods. We schedule 30 minutes early and busy-wait. Do not
   tighten this without first imagining the consequences vividly.
 - The `book` workflow's cron will run every Monday and Thursday until
-  disabled, including weeks when nothing is released. Each pointless
-  run costs approximately one second of compute, which is to say
-  nothing.
+  disabled. Most weeks no slots are released, and the run will exit
+  in a few seconds having booked nothing. Each pointless run costs
+  approximately one second of compute, which is to say nothing.
 - This software exists. Whether it should is a separate question, and
   one which would, in an appropriate venue, take ninety minutes to
   resolve.
