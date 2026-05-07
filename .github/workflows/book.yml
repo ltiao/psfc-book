@@ -1,0 +1,73 @@
+name: PSFC book
+# Books a Park Slope Food Coop orientation slot at the 7 PM ET release.
+# Cron is intentionally early (~30 min before 7 PM ET) because GitHub Actions
+# scheduled triggers can be delayed under load. The script's --fire-at flag
+# busy-waits internally to the millisecond, so any time before 7 PM ET works.
+
+on:
+  workflow_dispatch:        # manual "Run workflow" button
+  schedule:
+    # Mon and Thu at 22:30 UTC = 6:30 PM EDT.
+    # NOTE: when DST ends in November, this becomes 5:30 PM EST — adjust to
+    # '30 23 * * 1,4' for the EST half of the year.
+    - cron: '30 22 * * 1,4'
+
+concurrency:
+  group: psfc-book
+  cancel-in-progress: false
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PSFC_USER: ${{ secrets.PSFC_USER }}
+      PSFC_PASS: ${{ secrets.PSFC_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: pip install typer requests beautifulsoup4 lxml rich
+
+      - name: Compute target date
+        id: dates
+        run: |
+          set -euo pipefail
+          ANCHOR=$(TZ=America/New_York date +%Y-%m-%d)
+          TARGET=$(TZ=America/New_York date -d '+13 days' +'%-m/%-d/%Y')
+          echo "anchor=$ANCHOR" | tee -a "$GITHUB_OUTPUT"
+          echo "target=$TARGET" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Book
+        id: book
+        run: |
+          python psfc_book.py book \
+            --week 1 \
+            --target "${{ steps.dates.outputs.target }}" \
+            --anchor "${{ steps.dates.outputs.anchor }}" \
+            --fire-at "${{ steps.dates.outputs.anchor }} 19:00:00" \
+            --tz America/New_York \
+            --lead-ms 200 --poll-ms 80 --max-attempts 60 \
+            --dump-dir ./psfc_dumps
+
+      - name: Scout (post-mortem if booking missed)
+        if: failure()
+        run: |
+          python psfc_book.py scout \
+            --week 1 \
+            --anchor "${{ steps.dates.outputs.anchor }}" \
+            --target "${{ steps.dates.outputs.target }}" \
+            --dump-dir ./psfc_dumps
+
+      - name: Upload dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psfc-dumps-${{ github.run_id }}
+          path: psfc_dumps/
+          retention-days: 30
