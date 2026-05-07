@@ -8,15 +8,20 @@ Books a Park Slope Food Coop orientation slot on your behalf, at the
 exact moment slots are released, with the technical urgency of a flash
 sale and none of the dignity.
 
-We have lived a short walk from the Coop for over a year. We have not
-yet been to an orientation. The Coop releases a small batch of
-appointments twice a week, on Mondays and Thursdays at 7 PM Eastern;
-they last about two to three seconds. This repository is a Python CLI
-that logs in, waits to the millisecond, and grabs the first open slot.
-There is also a parallel forensics mode (`scout`), which records every
-byte of every response, so that when the booking attempt fails — and
-prior experience suggests it will — the next session can begin with
-evidence rather than vibes.
+We have lived a short walk from the Coop for over a year. We are not
+members. Membership requires, in order: reading the online orientation
+materials; attending an in-person enrollment appointment; presenting
+two forms of ID; paying a joining fee and a refundable equity
+investment; posing for a membership-card photograph; signing two
+policy agreements; and scheduling a first work shift. Of these, only
+the appointment must be scheduled in advance, and only on this
+website. The Coop releases a small batch of appointments twice a week,
+on Mondays and Thursdays at 7 PM Eastern; they last about two to three
+seconds. This repository is a Python CLI that logs in, waits to the
+millisecond, and grabs the first open slot. There is also a parallel
+forensics mode (`scout`), which records every byte of every response,
+so that when the booking attempt fails — and prior experience suggests
+it will — the next session can begin with evidence rather than vibes.
 
 ## How it works
 
@@ -184,10 +189,13 @@ requirements.txt               typer, requests, beautifulsoup4, lxml, rich
 - The Coop is a cooperative. This script is for booking _your own_
   orientation. Running parallel attempts to grab several slots would
   be, among other things, not in the spirit of coöperation.
-- The orientation is the first step of a process involving a 2.75-hour
-  work shift every four weeks, the household-membership rule, monthly
-  General Meetings conducted under Robert's Rules, and the
-  _Linewaiters' Gazette_. This script cannot help with any of them.
+- The appointment is the gate. On the far side of it is a process
+  involving two forms of ID, a $25 joining fee, a $100 refundable
+  member-owner equity investment, a photograph, two signed policy
+  agreements, the household-membership rule, a recurring 2-hour-45-minute
+  work shift, monthly General Meetings conducted under Robert's Rules,
+  and the _Linewaiters' Gazette_. This script cannot help with any of
+  them.
 - GitHub Actions cron triggers can be delayed by 5 to 30 minutes during
   busy periods. We schedule 30 minutes early and busy-wait. Do not
   tighten this without first imagining the consequences vividly.
