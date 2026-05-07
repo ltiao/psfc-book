@@ -391,5 +391,61 @@ def scout(
     rec.finalize()
 
 
+@app.command()
+def home(
+    dump_dir: Path = typer.Option(Path("./psfc_dumps"), "--dump-dir"),
+    user: str = typer.Option(..., envvar="PSFC_USER"),
+    password: str = typer.Option(..., envvar="PSFC_PASS",
+                                 hide_input=True, prompt=False),
+):
+    """Recon: log in, fetch the home page, dump it, and surface any
+    'Upcoming Orientations' content we can spot heuristically."""
+    s = requests.Session()
+    s.headers["User-Agent"] = "Mozilla/5.0"
+    rec = Recorder(dump_dir, "home", {"command": "home"})
+    with console.status("[bold green]logging in…"): login(s, user, password)
+    r = s.get(f"{BASE}/home/", timeout=10); r.raise_for_status()
+    rec.write("home.html", r.text)
+    log.info(f"home {r.status_code} ({len(r.text)} bytes)")
+
+    soup = BeautifulSoup(r.text, "lxml")
+    # heuristic 1: anything with text containing "Upcoming" or "Orientation"
+    candidates = []
+    for el in soup.find_all(string=True):
+        t = el.strip()
+        if not t: continue
+        low = t.lower()
+        if "upcoming" in low or "orientation" in low:
+            parent = el.parent
+            candidates.append({
+                "tag": parent.name,
+                "classes": parent.get("class", []),
+                "text": t[:200],
+                "parent_html": str(parent)[:400],
+            })
+    rec.write("home_text_hits.json",
+              json.dumps(candidates, indent=2, default=str))
+
+    # heuristic 2: any element whose tag/class hints at an announcement
+    sections = []
+    for el in soup.select(
+        "[class*=upcoming], [class*=orientation], [class*=announce], "
+        "[class*=release], [id*=upcoming], [id*=orientation]"
+    ):
+        sections.append({
+            "tag": el.name, "classes": el.get("class", []),
+            "id": el.get("id"),
+            "html": str(el)[:800],
+        })
+    rec.write("home_sections.json",
+              json.dumps(sections, indent=2, default=str))
+
+    log.info(f"text hits: {len(candidates)} | classed sections: {len(sections)}")
+    if sections:
+        for s_ in sections[:5]:
+            console.print(Panel(s_["html"], title=f"{s_['tag']}.{'.'.join(s_['classes'])}"))
+    rec.finalize()
+
+
 if __name__ == "__main__":
     app()

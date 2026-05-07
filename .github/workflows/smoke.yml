@@ -29,6 +29,10 @@ jobs:
           ANCHOR=$(TZ=America/New_York date +%Y-%m-%d)
           python psfc_book.py scout --week 0 --anchor "$ANCHOR" --dump-dir ./psfc_dumps
 
+      - name: Home-page recon
+        run: |
+          python psfc_book.py home --dump-dir ./psfc_dumps
+
       - name: Verify dump contents
         run: |
           set -euo pipefail
