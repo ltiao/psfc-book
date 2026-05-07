@@ -1,0 +1,59 @@
+name: smoke
+# End-to-end check: runs the scout command against the empty current week.
+# Verifies secrets, python deps, login, calendar fetch, and artifact upload
+# all work — without booking anything. Trigger manually any time.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PSFC_USER: ${{ secrets.PSFC_USER }}
+      PSFC_PASS: ${{ secrets.PSFC_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: pip install typer requests beautifulsoup4 lxml rich
+
+      - name: Scout current week
+        run: |
+          ANCHOR=$(TZ=America/New_York date +%Y-%m-%d)
+          python psfc_book.py scout --week 0 --anchor "$ANCHOR" --dump-dir ./psfc_dumps
+
+      - name: Verify dump contents
+        run: |
+          set -euo pipefail
+          DIR=$(ls -td psfc_dumps/* | head -1)
+          echo "checking $DIR"
+          test -f "$DIR/calendar.html"  || { echo "missing calendar.html"; exit 1; }
+          test -f "$DIR/shifts.json"    || { echo "missing shifts.json"; exit 1; }
+          test -f "$DIR/meta.json"      || { echo "missing meta.json"; exit 1; }
+          python - <<'PY'
+          import json, pathlib, sys
+          d = sorted(pathlib.Path("psfc_dumps").iterdir())[-1]
+          m = json.loads((d / "meta.json").read_text())
+          assert m.get("primed_csrf_tail"),    f"no csrf primed: {m}"
+          assert m.get("primed_session_tail"), f"no session primed: {m}"
+          html = (d / "calendar.html").read_text()
+          assert "Welcome" in html, "calendar HTML doesn't show logged-in user"
+          print("✓ csrf primed:", m["primed_csrf_tail"])
+          print("✓ session primed:", m["primed_session_tail"])
+          print("✓ calendar HTML reflects authenticated user")
+          PY
+
+      - name: Upload smoke dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-dumps-${{ github.run_id }}
+          path: psfc_dumps/
+          retention-days: 7
