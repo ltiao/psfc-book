@@ -48,7 +48,9 @@ exactly 19:00:00 ET, and writes everything down for posterity.
 ## Quick start — GitHub Actions
 
 The cron in `.github/workflows/book.yml` fires every Monday and Thursday
-at 22:30 UTC. Most of these firings will find nothing released and exit
+at 22:17 UTC. (The off-the-hour minute is deliberate — GitHub's scheduler
+is least reliable at `:00` and `:30`, when everyone else's crons are also
+trying to fire.) Most of these firings will find nothing released and exit
 quietly within a few seconds, on the theory that being awake on the
 day in question is cheaper than predicting it. The script's `--fire-at`
 flag busy-waits internally until 19:00:00 America/New_York, so GitHub
@@ -67,7 +69,7 @@ contains some forty kilobytes of HTML and the exact reason you did or
 did not get an orientation slot.
 
 > **Daylight Saving caveat.** The cron is set for EDT. When DST ends in
-> November, change `'30 22 * * 1,4'` to `'30 23 * * 1,4'`, or accept
+> November, change `'17 22 * * 1,4'` to `'17 23 * * 1,4'`, or accept
 > that you will be polling for slots an hour after they have all been
 > claimed.
 

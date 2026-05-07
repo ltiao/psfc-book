@@ -7,10 +7,12 @@ name: PSFC book
 on:
   workflow_dispatch:        # manual "Run workflow" button
   schedule:
-    # Mon and Thu at 22:30 UTC = 6:30 PM EDT.
-    # NOTE: when DST ends in November, this becomes 5:30 PM EST — adjust to
-    # '30 23 * * 1,4' for the EST half of the year.
-    - cron: '30 22 * * 1,4'
+    # Mon and Thu at 22:17 UTC = 6:17 PM EDT.
+    # Off-the-hour by design: GitHub Actions skips/delays scheduled triggers
+    # most often at :00 and :30 (busy minutes). :17 is comfortably between.
+    # NOTE: when DST ends in November, this becomes 5:17 PM EST — adjust to
+    # '17 23 * * 1,4' for the EST half of the year.
+    - cron: '17 22 * * 1,4'
 
 concurrency:
   group: psfc-book
