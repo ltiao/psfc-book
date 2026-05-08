@@ -38,7 +38,9 @@ concurrency:
 jobs:
   book:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 60 min covers: watcher dispatch at 22:23 UTC + GH Actions startup
+    # delay (typically 5-30 min) + busy-wait to 23:00 UTC + 5s of polling.
+    timeout-minutes: 60
     env:
       PSFC_USER: ${{ secrets.PSFC_USER }}
       PSFC_PASS: ${{ secrets.PSFC_PASS }}

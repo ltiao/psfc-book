@@ -49,11 +49,13 @@ exactly 19:00:00 ET, and writes everything down for posterity.
 
 There are three workflows:
 
-- `watcher.yml` — runs daily at 16:13 UTC (~12:13 PM ET). Logs in, reads
+- `watcher.yml` — runs daily at 22:23 UTC (~6:23 PM ET). Logs in, reads
   the home page's "Upcoming Orientations" listing, and if any of them
   has its release scheduled for today, dispatches `book.yml` with the
   right week / target / fire-at. Most days find nothing and exit in
-  three seconds.
+  three seconds. (The 6:23 PM time leaves 37 min for `book.yml` to
+  start and busy-wait to the 7 PM release, well within a single
+  GitHub Actions job.)
 - `book.yml` — does the actual booking. Normally invoked by the
   watcher; also has a Mon/Thu cron at 22:17 UTC as a belt-and-suspenders
   fallback in case the watcher misses one.
