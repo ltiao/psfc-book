@@ -72,13 +72,6 @@ to fire. And `--fire-at` busy-waits internally to the millisecond, so
 GitHub Actions' famously imprecise scheduling is a non-issue, provided
 the workflow has begun by 7 PM ET. So far it has.
 
-```bash
-gh repo create psfc-book --private --source=. --push
-gh secret set PSFC_USER --body 'your-coop-username'
-gh secret set PSFC_PASS --body 'your-coop-password'
-gh workflow run smoke.yml
-```
-
 After a run, download `psfc-dumps-<run_id>` from the Actions tab. It
 contains some forty kilobytes of HTML and the exact reason you did or
 did not get an orientation slot.
