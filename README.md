@@ -19,15 +19,18 @@ two forms of ID; paying a joining fee and a refundable equity
 investment; posing for a membership-card photograph; signing two
 policy agreements; and scheduling a first work shift. Of these, only
 the appointment must be scheduled in advance, and only on this
-website. The Coop releases a tiny batch — about ten appointments —
-sporadically, often two or three months apart, occasionally in
-clusters of two or three releases over a fortnight. Each release
-happens at 7 PM Eastern and lasts about two to three seconds. This
-repository is a Python CLI that logs in, waits to the
-millisecond, and grabs the first open slot. There is also a parallel
-forensics mode (`scout`), which records every byte of every response,
-so that when the booking attempt fails — and prior experience suggests
-it will — the next session can begin with evidence rather than vibes.
+website.
+
+The Coop releases a tiny batch — ten to fifteen appointments —
+sporadically, sometimes months apart, sometimes in clusters of two or
+three over a fortnight. Each release fires at 7 PM Eastern and clears
+in two to three seconds.
+
+This repository is a Python CLI that logs in, waits to the millisecond,
+and grabs the first open slot. There is also a parallel forensics mode
+(`scout`), which records every byte of every response, so that when
+the booking attempt fails — and prior experience suggests it will —
+the next session can begin with evidence rather than vibes.
 
 ## How it works
 
@@ -83,6 +86,9 @@ did not get an orientation slot.
 
 ## Quick start — Local
 
+For when GitHub Actions has failed and you happen, against expectation,
+to be at a laptop:
+
 ```bash
 pip install -r requirements.txt
 export PSFC_USER='...'
@@ -90,8 +96,8 @@ export PSFC_PASS='...'
 
 # Real booking, evening of:
 python psfc_book.py book \
-  --week 1 --target 5/20/2026 \
-  --fire-at "2026-05-07 19:00:00" --tz America/New_York
+  --week 1 --target 5/27/2026 \
+  --fire-at "2026-05-14 19:00:00" --tz America/New_York
 
 # Recon — logs in, fetches the calendar, dumps it, claims nothing.
 python psfc_book.py scout --week 0
@@ -156,7 +162,7 @@ announced for today calls for action, and writes the verdict to
 
 ## What gets recorded
 
-Every invocation writes to `./psfc_dumps/<UTC_timestamp>_<label>/`:
+Every invocation writes to `./psfc_dumps/<timestamp>_<label>/`:
 
 ```
 calendar_prewarm.html          the calendar GET before --fire-at
@@ -247,8 +253,8 @@ requirements.txt                   typer, requests, beautifulsoup4, lxml, rich
   and the _Linewaiters' Gazette_. This script cannot help with any of
   them.
 - GitHub Actions cron triggers can be delayed by 5 to 30 minutes during
-  busy periods. We schedule 30 minutes early and busy-wait. Do not
-  tighten this without first imagining the consequences vividly.
+  busy periods. We schedule about forty minutes early and busy-wait.
+  Do not tighten this without first imagining the consequences vividly.
 - The `book.yml` cron continues to fire every Monday and Thursday as a
   backstop, regardless of whether the watcher had anything to dispatch.
   Most weeks find nothing released and the run exits cleanly. Each idle
