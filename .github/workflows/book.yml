@@ -1,11 +1,28 @@
 name: PSFC book
-# Books a Park Slope Food Coop orientation slot at the 7 PM ET release.
-# Cron is intentionally early (~30 min before 7 PM ET) because GitHub Actions
-# scheduled triggers can be delayed under load. The script's --fire-at flag
-# busy-waits internally to the millisecond, so any time before 7 PM ET works.
+# Books a Park Slope Food Coop orientation slot at the release moment.
+# Driven primarily by watcher.yml (which dispatches this with explicit
+# inputs after detecting a release announced for today). The Mon/Thu
+# cron is kept as belt-and-suspenders in case the watcher misses one.
 
 on:
-  workflow_dispatch:        # manual "Run workflow" button
+  workflow_dispatch:
+    inputs:
+      week:
+        description: 'Week offset (0 = current, 1 = next, …)'
+        required: false
+        default: '1'
+      target:
+        description: 'Day-label substring, e.g. 5/27/2026 (default: today + 13 days)'
+        required: false
+        default: ''
+      anchor:
+        description: 'Anchor date YYYY-MM-DD (default: today ET)'
+        required: false
+        default: ''
+      fire_at:
+        description: 'Fire-at YYYY-MM-DD HH:MM:SS (default: today 19:00:00 ET)'
+        required: false
+        default: ''
   schedule:
     # Mon and Thu at 22:17 UTC = 6:17 PM EDT.
     # Off-the-hour by design: GitHub Actions skips/delays scheduled triggers
@@ -36,23 +53,32 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Compute target date
+      - name: Resolve booking parameters
         id: dates
+        # Inputs override; otherwise default to "today ET" semantics.
         run: |
           set -euo pipefail
-          ANCHOR=$(TZ=America/New_York date +%Y-%m-%d)
-          TARGET=$(TZ=America/New_York date -d '+13 days' +'%-m/%-d/%Y')
-          echo "anchor=$ANCHOR" | tee -a "$GITHUB_OUTPUT"
-          echo "target=$TARGET" | tee -a "$GITHUB_OUTPUT"
+          ANCHOR='${{ inputs.anchor }}'
+          [ -z "$ANCHOR" ] && ANCHOR=$(TZ=America/New_York date +%Y-%m-%d)
+          TARGET='${{ inputs.target }}'
+          [ -z "$TARGET" ] && TARGET=$(TZ=America/New_York date -d '+13 days' +'%-m/%-d/%Y')
+          FIRE_AT='${{ inputs.fire_at }}'
+          [ -z "$FIRE_AT" ] && FIRE_AT="$ANCHOR 19:00:00"
+          WEEK='${{ inputs.week }}'
+          [ -z "$WEEK" ] && WEEK=1
+          echo "anchor=$ANCHOR"   | tee -a "$GITHUB_OUTPUT"
+          echo "target=$TARGET"   | tee -a "$GITHUB_OUTPUT"
+          echo "fire_at=$FIRE_AT" | tee -a "$GITHUB_OUTPUT"
+          echo "week=$WEEK"       | tee -a "$GITHUB_OUTPUT"
 
       - name: Book
         id: book
         run: |
           python psfc_book.py book \
-            --week 1 \
-            --target "${{ steps.dates.outputs.target }}" \
-            --anchor "${{ steps.dates.outputs.anchor }}" \
-            --fire-at "${{ steps.dates.outputs.anchor }} 19:00:00" \
+            --week '${{ steps.dates.outputs.week }}' \
+            --target '${{ steps.dates.outputs.target }}' \
+            --anchor '${{ steps.dates.outputs.anchor }}' \
+            --fire-at '${{ steps.dates.outputs.fire_at }}' \
             --tz America/New_York \
             --lead-ms 200 --poll-ms 80 --max-attempts 60 \
             --dump-dir ./psfc_dumps
@@ -61,9 +87,9 @@ jobs:
         if: failure()
         run: |
           python psfc_book.py scout \
-            --week 1 \
-            --anchor "${{ steps.dates.outputs.anchor }}" \
-            --target "${{ steps.dates.outputs.target }}" \
+            --week '${{ steps.dates.outputs.week }}' \
+            --anchor '${{ steps.dates.outputs.anchor }}' \
+            --target '${{ steps.dates.outputs.target }}' \
             --dump-dir ./psfc_dumps
 
       - name: Upload dumps

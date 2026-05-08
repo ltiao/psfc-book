@@ -1,0 +1,63 @@
+name: PSFC watcher
+# Daily check of the home page for "Upcoming Orientations" entries scheduled
+# to release today. When one is found, dispatches book.yml with the right
+# week / target / anchor / fire-at inputs. Most days find nothing and exit
+# cleanly in a few seconds.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 16:13 UTC = 12:13 PM EDT (11:13 AM EST).
+    # Comfortably before any 7 PM ET release; off-the-hour for scheduler reliability.
+    - cron: '13 16 * * *'
+
+permissions:
+  actions: write       # required for `gh workflow run book.yml`
+  contents: read
+
+concurrency:
+  group: psfc-watcher
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PSFC_USER: ${{ secrets.PSFC_USER }}
+      PSFC_PASS: ${{ secrets.PSFC_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Detect today's release (if any)
+        id: detect
+        run: |
+          python psfc_book.py watch --dump-dir ./psfc_dumps
+
+      - name: Dispatch book.yml
+        if: steps.detect.outputs.release_today == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run book.yml \
+            -f week='${{ steps.detect.outputs.week }}' \
+            -f target='${{ steps.detect.outputs.target }}' \
+            -f anchor='${{ steps.detect.outputs.anchor }}' \
+            -f fire_at='${{ steps.detect.outputs.fire_at }}'
+          echo "Dispatched book.yml for ${{ steps.detect.outputs.target }} at ${{ steps.detect.outputs.fire_at }}"
+
+      - name: Upload dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watcher-${{ github.run_id }}
+          path: psfc_dumps/
+          retention-days: 14

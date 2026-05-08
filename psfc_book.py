@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """psfc_book.py — Auto-book a Park Slope Food Coop orientation slot."""
 from __future__ import annotations
-import json, time, logging
+import json, os, re, time, logging
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -84,6 +84,59 @@ def find_open_slot(html: str, target: Optional[str]):
         if sh["open"] and sh["href"]:
             return sh["href"], sh["day"]
     return None, None
+
+
+_DAYS = "Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday"
+_UPCOMING_RE = re.compile(
+    rf"(?P<orient_day>{_DAYS})\s+"
+    rf"(?P<orient_date>\d{{1,2}}/\d{{1,2}}/\d{{4}}):\s*"
+    rf"(?P<count>\d+)\s*appointments?,\s*"
+    rf"(?P<orient_time>[\d:apm\.]+)"
+    rf".*?Released at\s+(?P<release_time>\S+)\s+on\s+"
+    rf"(?P<release_day>{_DAYS})\s+"
+    rf"(?P<release_date>\d{{1,2}}/\d{{1,2}}/\d{{4}})",
+    re.IGNORECASE | re.DOTALL,
+)
+
+def parse_upcoming(html: str) -> list[dict]:
+    """Extract Upcoming Orientations entries from /home/.
+
+    Shape:
+      <h3>Upcoming Orientations</h3>
+      <ul>
+        <li> Weekday M/D/YYYY: N appointments, H:MMam/pm
+             ⏰ Released at <time> on Weekday M/D/YYYY </li>
+        ...
+      </ul>"""
+    soup = BeautifulSoup(html, "lxml")
+    h3 = soup.find(lambda t: t.name == "h3"
+                   and "Upcoming Orientations" in t.get_text())
+    if not h3:
+        return []
+    ul = h3.find_next("ul")
+    if not ul:
+        return []
+    items = []
+    for li in ul.find_all("li", recursive=False):
+        text = re.sub(r"\s+", " ", li.get_text(" ", strip=True))
+        m = _UPCOMING_RE.search(text)
+        if m:
+            items.append(m.groupdict())
+    return items
+
+
+def parse_release_time(s: str) -> tuple[int, int]:
+    """'7pm' → (19, 0). '7:30pm' → (19, 30). '10:15am' → (10, 15)."""
+    s = s.lower().replace(".", "").strip()
+    m = re.match(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", s)
+    if not m:
+        return 19, 0
+    hh = int(m.group(1))
+    mm = int(m.group(2) or 0)
+    ampm = m.group(3)
+    if ampm == "pm" and hh < 12: hh += 12
+    if ampm == "am" and hh == 12: hh = 0
+    return hh, mm
 
 
 # ───────────────────── recorder ─────────────────────
@@ -398,52 +451,100 @@ def home(
     password: str = typer.Option(..., envvar="PSFC_PASS",
                                  hide_input=True, prompt=False),
 ):
-    """Recon: log in, fetch the home page, dump it, and surface any
-    'Upcoming Orientations' content we can spot heuristically."""
+    """Recon: log in, fetch /home/, dump it, and parse Upcoming
+    Orientations entries."""
     s = requests.Session()
     s.headers["User-Agent"] = "Mozilla/5.0"
     rec = Recorder(dump_dir, "home", {"command": "home"})
     with console.status("[bold green]logging in…"): login(s, user, password)
     r = s.get(f"{BASE}/home/", timeout=10); r.raise_for_status()
     rec.write("home.html", r.text)
-    log.info(f"home {r.status_code} ({len(r.text)} bytes)")
+    items = parse_upcoming(r.text)
+    rec.write("upcoming.json", json.dumps(items, indent=2))
+    log.info(f"home {r.status_code} ({len(r.text)} bytes); "
+             f"{len(items)} upcoming announcement(s)")
+    if items:
+        t = Table(title="Upcoming Orientations")
+        for col in ("orient_day", "orient_date", "orient_time",
+                    "count", "release_day", "release_date", "release_time"):
+            t.add_column(col)
+        for it in items:
+            t.add_row(it["orient_day"], it["orient_date"], it["orient_time"],
+                      it["count"], it["release_day"], it["release_date"],
+                      it["release_time"])
+        console.print(t)
+    else:
+        console.print("[dim]no upcoming releases announced[/]")
+    rec.finalize()
 
-    soup = BeautifulSoup(r.text, "lxml")
-    # heuristic 1: anything with text containing "Upcoming" or "Orientation"
-    candidates = []
-    for el in soup.find_all(string=True):
-        t = el.strip()
-        if not t: continue
-        low = t.lower()
-        if "upcoming" in low or "orientation" in low:
-            parent = el.parent
-            candidates.append({
-                "tag": parent.name,
-                "classes": parent.get("class", []),
-                "text": t[:200],
-                "parent_html": str(parent)[:400],
-            })
-    rec.write("home_text_hits.json",
-              json.dumps(candidates, indent=2, default=str))
 
-    # heuristic 2: any element whose tag/class hints at an announcement
-    sections = []
-    for el in soup.select(
-        "[class*=upcoming], [class*=orientation], [class*=announce], "
-        "[class*=release], [id*=upcoming], [id*=orientation]"
-    ):
-        sections.append({
-            "tag": el.name, "classes": el.get("class", []),
-            "id": el.get("id"),
-            "html": str(el)[:800],
-        })
-    rec.write("home_sections.json",
-              json.dumps(sections, indent=2, default=str))
+@app.command()
+def watch(
+    dump_dir: Path = typer.Option(Path("./psfc_dumps"), "--dump-dir"),
+    tz: str = typer.Option("America/New_York", "--tz"),
+    user: str = typer.Option(..., envvar="PSFC_USER"),
+    password: str = typer.Option(..., envvar="PSFC_PASS",
+                                 hide_input=True, prompt=False),
+):
+    """Check /home/ for upcoming-orientation entries with release_date == today.
 
-    log.info(f"text hits: {len(candidates)} | classed sections: {len(sections)}")
-    if sections:
-        for s_ in sections[:5]:
-            console.print(Panel(s_["html"], title=f"{s_['tag']}.{'.'.join(s_['classes'])}"))
+    If found, append the parameters book.yml should be dispatched with to
+    $GITHUB_OUTPUT (release_today=true, week=, target=, anchor=, fire_at=).
+    Otherwise emits release_today=false."""
+    s = requests.Session()
+    s.headers["User-Agent"] = "Mozilla/5.0"
+    rec = Recorder(dump_dir, "watch", {"command": "watch"})
+    with console.status("[bold green]logging in…"): login(s, user, password)
+    r = s.get(f"{BASE}/home/", timeout=10); r.raise_for_status()
+    rec.write("home.html", r.text)
+    items = parse_upcoming(r.text)
+    rec.write("upcoming.json", json.dumps(items, indent=2))
+
+    today = datetime.now(ZoneInfo(tz)).date()
+    log.info(f"today is [cyan]{today}[/] ({tz}); "
+             f"upcoming announcements: {len(items)}")
+    for it in items:
+        log.info(f"  ⏰ release [yellow]{it['release_date']}[/] "
+                 f"({it['release_day']}) at {it['release_time']} "
+                 f"→ orient {it['orient_date']} ({it['count']} appts)")
+
+    matches = [
+        it for it in items
+        if datetime.strptime(it["release_date"], "%m/%d/%Y").date() == today
+    ]
+
+    gho = os.environ.get("GITHUB_OUTPUT")
+    out: dict[str, str] = {}
+    if matches:
+        m = matches[0]
+        anchor = today.isoformat()
+        target = m["orient_date"]
+        hh, mm = parse_release_time(m["release_time"])
+        fire_at = f"{anchor} {hh:02d}:{mm:02d}:00"
+        orient_d = datetime.strptime(target, "%m/%d/%Y").date()
+        week = (orient_d - today).days // 7
+        out = {
+            "release_today": "true",
+            "target": target, "anchor": anchor,
+            "fire_at": fire_at, "week": str(week),
+        }
+        rec.meta.booked_message = (
+            f"watcher matched: {target} @ {fire_at} (week {week})")
+        log.info(f"[bold green]release scheduled today[/] → "
+                 f"target={target}, week={week}, fire_at={fire_at}")
+        if len(matches) > 1:
+            log.warning(f"[yellow]{len(matches)} releases scheduled today; "
+                        f"taking the first[/]")
+    else:
+        out = {"release_today": "false"}
+        log.info("[dim]no release scheduled for today[/]")
+
+    rec.write("github_output.txt",
+              "".join(f"{k}={v}\n" for k, v in out.items()))
+    if gho:
+        with open(gho, "a") as f:
+            for k, v in out.items():
+                f.write(f"{k}={v}\n")
     rec.finalize()
 
 

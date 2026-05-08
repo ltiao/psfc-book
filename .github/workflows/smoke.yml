@@ -36,22 +36,28 @@ jobs:
       - name: Verify dump contents
         run: |
           set -euo pipefail
-          DIR=$(ls -td psfc_dumps/* | head -1)
-          echo "checking $DIR"
-          test -f "$DIR/calendar.html"  || { echo "missing calendar.html"; exit 1; }
-          test -f "$DIR/shifts.json"    || { echo "missing shifts.json"; exit 1; }
-          test -f "$DIR/meta.json"      || { echo "missing meta.json"; exit 1; }
           python - <<'PY'
-          import json, pathlib, sys
-          d = sorted(pathlib.Path("psfc_dumps").iterdir())[-1]
-          m = json.loads((d / "meta.json").read_text())
+          import json, pathlib
+          dumps = pathlib.Path("psfc_dumps")
+          scout = sorted(dumps.glob("*_scout_*"))[-1]
+          home  = sorted(dumps.glob("*_home"))[-1]
+          # scout must have calendar.html, shifts.json, meta.json with primed cookies + Welcome
+          for f in ("calendar.html", "shifts.json", "meta.json"):
+              assert (scout / f).exists(), f"missing {scout}/{f}"
+          m = json.loads((scout / "meta.json").read_text())
           assert m.get("primed_csrf_tail"),    f"no csrf primed: {m}"
           assert m.get("primed_session_tail"), f"no session primed: {m}"
-          html = (d / "calendar.html").read_text()
+          html = (scout / "calendar.html").read_text()
           assert "Welcome" in html, "calendar HTML doesn't show logged-in user"
-          print("✓ csrf primed:", m["primed_csrf_tail"])
-          print("✓ session primed:", m["primed_session_tail"])
-          print("✓ calendar HTML reflects authenticated user")
+          # home must have home.html and upcoming.json
+          for f in ("home.html", "upcoming.json"):
+              assert (home / f).exists(), f"missing {home}/{f}"
+          upcoming = json.loads((home / "upcoming.json").read_text())
+          print(f"✓ scout: csrf …{m['primed_csrf_tail']}, session …{m['primed_session_tail']}")
+          print(f"✓ home: {len(upcoming)} upcoming announcement(s) parsed")
+          for it in upcoming:
+              print(f"   • {it['orient_day']} {it['orient_date']}: "
+                    f"{it['count']} appts → release {it['release_date']} {it['release_time']}")
           PY
 
       - name: Upload smoke dumps

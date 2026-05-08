@@ -47,15 +47,25 @@ exactly 19:00:00 ET, and writes everything down for posterity.
 
 ## Quick start — GitHub Actions
 
-The cron in `.github/workflows/book.yml` fires every Monday and Thursday
-at 22:17 UTC. (The off-the-hour minute is deliberate — GitHub's scheduler
-is least reliable at `:00` and `:30`, when everyone else's crons are also
-trying to fire.) Most of these firings will find nothing released and exit
-quietly within a few seconds, on the theory that being awake on the
-day in question is cheaper than predicting it. The script's `--fire-at`
-flag busy-waits internally until 19:00:00 America/New_York, so GitHub
-Actions' famously imprecise scheduling is a non-issue, provided the
-workflow has begun by 7 PM. So far it has.
+There are three workflows:
+
+- `watcher.yml` — runs daily at 16:13 UTC (~12:13 PM ET). Logs in, reads
+  the home page's "Upcoming Orientations" listing, and if any of them
+  has its release scheduled for today, dispatches `book.yml` with the
+  right week / target / fire-at. Most days find nothing and exit in
+  three seconds.
+- `book.yml` — does the actual booking. Normally invoked by the
+  watcher; also has a Mon/Thu cron at 22:17 UTC as a belt-and-suspenders
+  fallback in case the watcher misses one.
+- `smoke.yml` — manual end-to-end credential and parser check. Verifies
+  login, calendar dump, and home-page parser all work. Run after any
+  change.
+
+(The off-the-hour minutes are deliberate — GitHub's scheduler is least
+reliable at `:00` and `:30`, when everyone else's crons are also trying
+to fire.) The script's `--fire-at` flag busy-waits internally to the
+millisecond, so GitHub Actions' famously imprecise scheduling is a
+non-issue, provided the workflow has begun by 7 PM ET.
 
 ```bash
 gh repo create psfc-book --private --source=. --push
@@ -125,6 +135,28 @@ if any are visible. Useful for confirming credentials, studying form
 structure, and the quiet satisfaction of inspecting other people's
 already-claimed slots after a release you slept through.
 
+### `home`
+
+```bash
+python psfc_book.py home
+```
+
+Logs in, fetches `/home/`, parses any "Upcoming Orientations" entries
+into a structured table. Used during development; useful for confirming
+the parser still matches reality.
+
+### `watch`
+
+```bash
+python psfc_book.py watch
+```
+
+The watcher's main loop. Logs in, fetches `/home/`, and if any
+upcoming-orientation entry has its release scheduled for today (in
+`America/New_York`), appends `release_today=true` plus parsed booking
+parameters to `$GITHUB_OUTPUT` for the workflow to consume. Otherwise
+emits `release_today=false` and exits 0.
+
 ## What gets recorded
 
 Every invocation writes to `./psfc_dumps/<UTC_timestamp>_<label>/`:
@@ -150,24 +182,20 @@ the slot is gone.
 
 ## Release timing
 
-Releases are not on a public schedule. When one is coming up, the
-home page at <https://ort.foodcoop.com/> lists it under "Upcoming
-Orientations" with the precise minute slots will become claimable.
-Empirically, releases happen 13 days before the orientation, at 7 PM
-ET, and orientations themselves run on Wednesday mornings or Sunday
-afternoons:
+Releases are not on a public schedule. When one is coming up, the home
+page at <https://ort.foodcoop.com/> lists it under "Upcoming
+Orientations", with the orientation date, appointment count, time, and
+the precise day and time slots will become claimable. The watcher reads
+this list daily and dispatches `book.yml` with the parsed parameters
+when a release is imminent.
 
-| Orientation day | Release window                  |
-|---               |---                              |
-| Wednesday        | Thursday 7 PM ET, 13 days prior |
-| Sunday           | Monday 7 PM ET, 13 days prior   |
+Empirically, releases fire at 7 PM ET exactly 13 days before the
+orientation. Orientations run on Wednesday mornings or Sunday
+afternoons. Each release is around ten to fifteen appointments, and
+they fill in two to three seconds.
 
-`--target` is always today plus 13 days. The workflow computes this:
-
-```yaml
-ANCHOR=$(TZ=America/New_York date +%Y-%m-%d)
-TARGET=$(TZ=America/New_York date -d '+13 days' +'%-m/%-d/%Y')
-```
+If the home page ever disappears or changes shape, the Mon/Thu cron in
+`book.yml` continues to fire as a fallback. Both runs upload artifacts.
 
 ## Reference
 
