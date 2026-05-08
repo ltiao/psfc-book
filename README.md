@@ -1,5 +1,9 @@
 # psfc-book
 
+[![watcher](https://github.com/ltiao/psfc-book/actions/workflows/watcher.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/watcher.yml)
+[![book](https://github.com/ltiao/psfc-book/actions/workflows/book.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/book.yml)
+[![smoke](https://github.com/ltiao/psfc-book/actions/workflows/smoke.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/smoke.yml)
+
 > _"Be patient, wait for them to ripen. Be brave and try something new."_
 > — laminated sign in the Park Slope Food Coop produce aisle, on the
 > matter of fresh dates
@@ -47,27 +51,26 @@ exactly 19:00:00 ET, and writes everything down for posterity.
 
 ## Quick start — GitHub Actions
 
-There are three workflows:
+There are three workflows.
 
-- `watcher.yml` — runs daily at 22:23 UTC (~6:23 PM ET). Logs in, reads
-  the home page's "Upcoming Orientations" listing, and if any of them
-  has its release scheduled for today, dispatches `book.yml` with the
-  right week / target / fire-at. Most days find nothing and exit in
-  three seconds. (The 6:23 PM time leaves 37 min for `book.yml` to
-  start and busy-wait to the 7 PM release, well within a single
-  GitHub Actions job.)
-- `book.yml` — does the actual booking. Normally invoked by the
-  watcher; also has a Mon/Thu cron at 22:17 UTC as a belt-and-suspenders
-  fallback in case the watcher misses one.
-- `smoke.yml` — manual end-to-end credential and parser check. Verifies
-  login, calendar dump, and home-page parser all work. Run after any
-  change.
+- **`watcher.yml`** runs daily at 22:23 UTC. It logs in, reads the home
+  page's "Upcoming Orientations" listing, and dispatches `book.yml` if
+  anything announced for the next forty minutes calls for action. Most
+  days nothing does, and it exits in three seconds.
+- **`book.yml`** is the booking job. The watcher invokes it on demand;
+  it also retains an independent cron on Mondays and Thursdays at 22:17
+  UTC, on the principle that two triggers are harder to forget than
+  one.
+- **`smoke.yml`** is a manual sanity check. It logs in, fetches the
+  calendar, fetches the home page, and asserts that we still recognize
+  what comes back. Run it after touching the parser, or for the
+  reassurance of seeing all three steps go green.
 
-(The off-the-hour minutes are deliberate — GitHub's scheduler is least
+The off-the-hour minutes are deliberate — GitHub's scheduler is least
 reliable at `:00` and `:30`, when everyone else's crons are also trying
-to fire.) The script's `--fire-at` flag busy-waits internally to the
-millisecond, so GitHub Actions' famously imprecise scheduling is a
-non-issue, provided the workflow has begun by 7 PM ET.
+to fire. And `--fire-at` busy-waits internally to the millisecond, so
+GitHub Actions' famously imprecise scheduling is a non-issue, provided
+the workflow has begun by 7 PM ET. So far it has.
 
 ```bash
 gh repo create psfc-book --private --source=. --push
@@ -143,9 +146,10 @@ already-claimed slots after a release you slept through.
 python psfc_book.py home
 ```
 
-Logs in, fetches `/home/`, parses any "Upcoming Orientations" entries
-into a structured table. Used during development; useful for confirming
-the parser still matches reality.
+Logs in, fetches `/home/`, and parses any "Upcoming Orientations"
+entries into a structured table. Mostly run to confirm that the
+announcement format hasn't shifted under us; occasionally run because
+it is genuinely the easiest way to find out when the next release is.
 
 ### `watch`
 
@@ -153,11 +157,9 @@ the parser still matches reality.
 python psfc_book.py watch
 ```
 
-The watcher's main loop. Logs in, fetches `/home/`, and if any
-upcoming-orientation entry has its release scheduled for today (in
-`America/New_York`), appends `release_today=true` plus parsed booking
-parameters to `$GITHUB_OUTPUT` for the workflow to consume. Otherwise
-emits `release_today=false` and exits 0.
+The watcher's loop. Logs in, fetches `/home/`, decides whether anything
+announced for today calls for action, and writes the verdict to
+`$GITHUB_OUTPUT` for the workflow to read. The verdict is usually no.
 
 ## What gets recorded
 
@@ -184,20 +186,20 @@ the slot is gone.
 
 ## Release timing
 
-Releases are not on a public schedule. When one is coming up, the home
-page at <https://ort.foodcoop.com/> lists it under "Upcoming
-Orientations", with the orientation date, appointment count, time, and
-the precise day and time slots will become claimable. The watcher reads
-this list daily and dispatches `book.yml` with the parsed parameters
-when a release is imminent.
+Releases are not on a public schedule, and the Coop has not committed
+to one. Announcements appear under "Upcoming Orientations" on the home
+page some days or weeks ahead, naming the orientation date, the
+appointment count, and the precise minute slots will become claimable.
+The watcher reads this list once a day and acts on it.
 
-Empirically, releases fire at 7 PM ET exactly 13 days before the
-orientation. Orientations run on Wednesday mornings or Sunday
-afternoons. Each release is around ten to fifteen appointments, and
-they fill in two to three seconds.
+Empirically, releases fire at 7 PM Eastern, exactly thirteen days
+before the orientation, in batches of ten to fifteen appointments, and
+clear in two to three seconds. Orientations run on Wednesday mornings
+or Sunday afternoons.
 
-If the home page ever disappears or changes shape, the Mon/Thu cron in
-`book.yml` continues to fire as a fallback. Both runs upload artifacts.
+If the home page ever vanishes, mutates, or simply lies, the
+Monday-and-Thursday cron in `book.yml` continues to fire on its own.
+Both runs upload artifacts. Forensics survive either way.
 
 ## Reference
 
@@ -221,10 +223,11 @@ which is the only setting any user has ever needed.
 ## Files
 
 ```
-psfc_book.py                   Typer CLI: book + scout
-requirements.txt               typer, requests, beautifulsoup4, lxml, rich
-.github/workflows/book.yml     cron-driven booking
-.github/workflows/smoke.yml    manual end-to-end credential check
+psfc_book.py                       Typer CLI: book, scout, home, watch
+requirements.txt                   typer, requests, beautifulsoup4, lxml, rich
+.github/workflows/watcher.yml      daily home-page check; dispatches book.yml
+.github/workflows/book.yml         the booking job — dispatched and on cron
+.github/workflows/smoke.yml        manual end-to-end credential and parser check
 ```
 
 ## Caveats
@@ -242,10 +245,10 @@ requirements.txt               typer, requests, beautifulsoup4, lxml, rich
 - GitHub Actions cron triggers can be delayed by 5 to 30 minutes during
   busy periods. We schedule 30 minutes early and busy-wait. Do not
   tighten this without first imagining the consequences vividly.
-- The `book` workflow's cron will run every Monday and Thursday until
-  disabled. Most weeks no slots are released, and the run will exit
-  in a few seconds having booked nothing. Each pointless run costs
-  approximately one second of compute, which is to say nothing.
+- The `book.yml` cron continues to fire every Monday and Thursday as a
+  backstop, regardless of whether the watcher had anything to dispatch.
+  Most weeks find nothing released and the run exits cleanly. Each idle
+  firing costs about a second of compute, which is to say nothing.
 - This software exists. Whether it should is a separate question, and
   one which would, in an appropriate venue, take ninety minutes to
   resolve.
