@@ -196,9 +196,9 @@ At the time of writing the home page says appointments are "available
 2 weeks in advance, at 7pm," and lists two upcoming releases — each
 thirteen days before its orientation, fifteen appointments apiece, both
 firing at 7 PM Eastern. Whether every release follows that pattern,
-nobody has told us. Anecdotally they clear in two to three seconds, but
-we have neither observed one in real time nor (at the time of writing)
-booked anything, so consider it received wisdom.
+nobody has told us. We have watched five releases come and go in
+roughly three seconds apiece, and have, at the time of writing, booked
+precisely none of them.
 
 If the home page ever vanishes, mutates, or simply lies, the
 Monday-and-Thursday cron in `book.yml` continues to fire on its own.
