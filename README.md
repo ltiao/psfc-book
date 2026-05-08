@@ -192,10 +192,13 @@ page some days or weeks ahead, naming the orientation date, the
 appointment count, and the precise minute slots will become claimable.
 The watcher reads this list once a day and acts on it.
 
-Empirically, releases fire at 7 PM Eastern, exactly thirteen days
-before the orientation, in batches of ten to fifteen appointments, and
-clear in two to three seconds. Orientations run on Wednesday mornings
-or Sunday afternoons.
+At the time of writing the home page says appointments are "available
+2 weeks in advance, at 7pm," and lists two upcoming releases — each
+thirteen days before its orientation, fifteen appointments apiece, both
+firing at 7 PM Eastern. Whether every release follows that pattern,
+nobody has told us. Anecdotally they clear in two to three seconds, but
+we have neither observed one in real time nor (at the time of writing)
+booked anything, so consider it received wisdom.
 
 If the home page ever vanishes, mutates, or simply lies, the
 Monday-and-Thursday cron in `book.yml` continues to fire on its own.
