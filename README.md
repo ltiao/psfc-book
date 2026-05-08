@@ -233,6 +233,14 @@ requirements.txt                   typer, requests, beautifulsoup4, lxml, rich
 .github/workflows/smoke.yml        manual end-to-end credential and parser check
 ```
 
+## Further reading
+
+- _The New Yorker_, ["The Grocery Store Where Produce Meets Politics"][nyer]. Recommended in the spirit, contradicted in the letter, by this software.
+- [Park Slope Food Coop manual][manual]. The full procedure, of which this software automates only the prefatory step.
+
+[nyer]: https://www.newyorker.com/magazine/2019/11/25/the-grocery-store-where-produce-meets-politics
+[manual]: https://www.foodcoop.com/manual/
+
 ## Caveats
 
 - The Coop is a cooperative. This script is for booking _your own_
