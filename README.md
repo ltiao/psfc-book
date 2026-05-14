@@ -1,6 +1,5 @@
 # psfc-book
 
-[![watcher](https://github.com/ltiao/psfc-book/actions/workflows/watcher.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/watcher.yml)
 [![book](https://github.com/ltiao/psfc-book/actions/workflows/book.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/book.yml)
 [![smoke](https://github.com/ltiao/psfc-book/actions/workflows/smoke.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/smoke.yml)
 
@@ -54,35 +53,31 @@ exactly 19:00:00 ET, and writes everything down for posterity.
 
 ## Quick start — GitHub Actions
 
-There are three workflows.
+There are two workflows.
 
-- **`watcher.yml`** runs daily at 22:23 UTC. It logs in, reads the home
-  page's "Upcoming Orientations" listing, and dispatches `book.yml` if
-  anything announced for the next forty minutes calls for action. Most
-  days nothing does, and it exits in three seconds.
-- **`book.yml`** is the booking job. The watcher invokes it on demand;
-  it also retains an independent cron on Mondays and Thursdays at 22:17
-  UTC, on the principle that two triggers are harder to forget than
-  one.
+- **`book.yml`** runs daily at 21:00 UTC, two hours before the 7 PM ET
+  release moment. It logs in, fetches the home page, and parses
+  "Upcoming Orientations." If nothing releases today, it exits cleanly
+  in a few seconds. If something does, it busy-waits internally to the
+  announced minute and books. The two-hour lead is not paranoia: GitHub
+  Actions' scheduled triggers are routinely delayed by forty-five to
+  ninety minutes, and a tighter margin loses the slot.
 - **`smoke.yml`** is a manual sanity check. It logs in, fetches the
   calendar, fetches the home page, and asserts that we still recognize
   what comes back. Run it after touching the parser, or for the
-  reassurance of seeing all three steps go green.
+  reassurance of seeing both steps go green.
 
-The off-the-hour minutes are deliberate — GitHub's scheduler is least
-reliable at `:00` and `:30`, when everyone else's crons are also trying
-to fire. And `--fire-at` busy-waits internally to the millisecond, so
-GitHub Actions' famously imprecise scheduling is a non-issue, provided
-the workflow has begun by 7 PM ET. So far it has.
+By default the booking step runs in **recon mode**, in which the script
+fetches the slot's detail page, parses the form there, and replays it.
+The faster path — POSTing directly to the slot URL with a guessed
+payload — is skipped, on the grounds that we have never observed an
+actual booking complete and have no business optimizing yet. After one
+successful flow has been recorded, recon mode can be turned off via the
+workflow's input.
 
 After a run, download `psfc-dumps-<run_id>` from the Actions tab. It
 contains some forty kilobytes of HTML and the exact reason you did or
 did not get an orientation slot.
-
-> **Daylight Saving caveat.** The cron is set for EDT. When DST ends in
-> November, change `'17 22 * * 1,4'` to `'17 23 * * 1,4'`, or accept
-> that you will be polling for slots an hour after they have all been
-> claimed.
 
 ## Quick start — Local
 
@@ -121,6 +116,7 @@ intervals, claims the first open slot it finds, and exits.
 | `--poll-ms` | `80` | Delay between calendar GETs. |
 | `--max-attempts` | `60` | About five seconds at default `poll-ms`. |
 | `--dry-run` / `--live` | `--live` | `--dry-run` parses but does not POST. |
+| `--recon` / `--no-recon` | `--no-recon` | `--recon` skips direct POST; fetches detail page and replays the form. Use until we have one observed success. |
 | `--dump-dir` | `./psfc_dumps` | |
 | `--user` / `--password` | env: `PSFC_USER`, `PSFC_PASS` | Prefer env. |
 
@@ -199,9 +195,9 @@ nobody has told us. We have watched five releases come and go in
 roughly three seconds apiece, and have, at the time of writing, booked
 precisely none of them.
 
-If the home page ever vanishes, mutates, or simply lies, the
-Monday-and-Thursday cron in `book.yml` continues to fire on its own.
-Both runs upload artifacts. Forensics survive either way.
+If the home page ever vanishes or simply lies, the workflow will exit
+quietly with nothing to do. A manual `gh workflow run book.yml -f
+target=… -f fire_at=…` is always available as the rescue path.
 
 ## Reference
 
@@ -227,8 +223,7 @@ which is the only setting any user has ever needed.
 ```
 psfc_book.py                       Typer CLI: book, scout, home, watch
 requirements.txt                   typer, requests, beautifulsoup4, lxml, rich
-.github/workflows/watcher.yml      daily home-page check; dispatches book.yml
-.github/workflows/book.yml         the booking job — dispatched and on cron
+.github/workflows/book.yml         daily watch-then-book; one job
 .github/workflows/smoke.yml        manual end-to-end credential and parser check
 ```
 
@@ -252,13 +247,13 @@ requirements.txt                   typer, requests, beautifulsoup4, lxml, rich
   work shift, monthly General Meetings conducted under Robert's Rules,
   and the _Linewaiters' Gazette_. This script cannot help with any of
   them.
-- GitHub Actions cron triggers can be delayed by 5 to 30 minutes during
-  busy periods. We schedule about forty minutes early and busy-wait.
-  Do not tighten this without first imagining the consequences vividly.
-- The `book.yml` cron continues to fire every Monday and Thursday as a
-  backstop, regardless of whether the watcher had anything to dispatch.
-  Most weeks find nothing released and the run exits cleanly. Each idle
-  firing costs about a second of compute, which is to say nothing.
+- GitHub Actions scheduled triggers are routinely delayed by 45 to 90
+  minutes, in our experience considerably worse than the docs admit.
+  We schedule two hours early and busy-wait. Do not tighten this
+  without first imagining the consequences vividly.
+- The booking step skips the direct-POST optimization in recon mode,
+  costing roughly one extra round-trip per attempt. This is the right
+  trade until we have one observed successful booking to copy from.
 - This software exists. Whether it should is a separate question, and
   one which would, in an appropriate venue, take ninety minutes to
   resolve.

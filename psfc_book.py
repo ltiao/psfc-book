@@ -272,6 +272,11 @@ def book(
     poll_ms: int = typer.Option(80, "--poll-ms"),
     max_attempts: int = typer.Option(60, "--max-attempts"),
     dry_run: bool = typer.Option(False, "--dry-run/--live"),
+    recon: bool = typer.Option(
+        False, "--recon/--no-recon",
+        help="Skip direct-POST guess; fetch slot detail page and replay "
+             "the form. Slower but captures ground truth. Use until we "
+             "have one observed successful booking."),
     dump_dir: Path = typer.Option(Path("./psfc_dumps"), "--dump-dir",
                                   help="Where to record HTML/payloads."),
     user: str = typer.Option(..., envvar="PSFC_USER"),
@@ -287,7 +292,7 @@ def book(
     rec = Recorder(dump_dir, label, {
         "command": "book", "week": week, "target": target, "anchor": anchor,
         "fire_at": fire_at, "tz": tz, "lead_ms": lead_ms, "poll_ms": poll_ms,
-        "max_attempts": max_attempts, "dry_run": dry_run,
+        "max_attempts": max_attempts, "dry_run": dry_run, "recon": recon,
     })
 
     pre = Table.grid(padding=(0, 1))
@@ -297,7 +302,9 @@ def book(
     pre.add_row("target",   target or "[dim]any open slot[/]")
     pre.add_row("fire-at",  f"{fire_at} {tz}" if fire_at else "[dim]immediately[/]")
     pre.add_row("dump dir", str(rec.dir))
-    pre.add_row("mode",     "[yellow]DRY RUN[/]" if dry_run else "[red]LIVE[/]")
+    mode = ("[yellow]DRY RUN[/]" if dry_run
+            else "[magenta]RECON[/]" if recon else "[red]LIVE[/]")
+    pre.add_row("mode",     mode)
     console.print(Panel(pre, title="[bold]PSFC orientation auto-booker",
                         border_style="cyan"))
 
@@ -337,12 +344,18 @@ def book(
                 log.info(f"[{attempt}] [bold green]FOUND[/] {day} → {slot_url} ({dt:.0f}ms)")
                 if dry_run:
                     booked = ("dry-run", slot_url, day, None); break
-                resp = try_book(s, slot_url, csrf, cal_url, rec)
-                ok = resp.status_code in (200, 302) and "error" not in resp.text.lower()
-                if not ok:
-                    log.warning("direct POST didn't take — falling back")
+                if recon:
+                    log.info("[magenta]recon mode[/]: skipping direct POST, "
+                             "fetching slot detail + replaying form")
                     rec.meta.fallback_used = True
                     resp = fallback_book(s, slot_url, cal_url, rec)
+                else:
+                    resp = try_book(s, slot_url, csrf, cal_url, rec)
+                    ok = resp.status_code in (200, 302) and "error" not in resp.text.lower()
+                    if not ok:
+                        log.warning("direct POST didn't take — falling back")
+                        rec.meta.fallback_used = True
+                        resp = fallback_book(s, slot_url, cal_url, rec)
                 soup = BeautifulSoup(resp.text, "lxml")
                 msg_el = soup.select_one("ul.messages") or soup.find(["h2", "h3"])
                 msg = msg_el.get_text(" ", strip=True) if msg_el else "(no message found)"

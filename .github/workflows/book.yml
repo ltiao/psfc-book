@@ -1,35 +1,43 @@
 name: PSFC book
-# Books a Park Slope Food Coop orientation slot at the release moment.
-# Driven primarily by watcher.yml (which dispatches this with explicit
-# inputs after detecting a release announced for today). The Mon/Thu
-# cron is kept as belt-and-suspenders in case the watcher misses one.
+# One workflow, one job. Fires daily at 21:00 UTC (~5 PM ET in summer,
+# ~4 PM ET in winter) — early enough that GitHub Actions' routine 45-70
+# minute scheduler delays still leave room to busy-wait to the 7 PM
+# release moment. First step reads the home page for "Upcoming
+# Orientations"; if none releases today, the job exits cleanly. Otherwise
+# it hands off to `book` with the parsed parameters and busy-waits to
+# fire time.
+#
+# Workflow_dispatch inputs override the home-page check, for manual
+# testing or rescue runs.
 
 on:
   workflow_dispatch:
     inputs:
       week:
-        description: 'Week offset (0 = current, 1 = next, …)'
+        description: 'Week offset (0=current, 1=next, …); blank = auto'
         required: false
-        default: '1'
+        default: ''
       target:
-        description: 'Day-label substring, e.g. 5/27/2026 (default: today + 13 days)'
+        description: 'Day-label substring, e.g. 5/31/2026; blank = auto'
         required: false
         default: ''
       anchor:
-        description: 'Anchor date YYYY-MM-DD (default: today ET)'
+        description: 'Anchor date YYYY-MM-DD; blank = today ET'
         required: false
         default: ''
       fire_at:
-        description: 'Fire-at YYYY-MM-DD HH:MM:SS (default: today 19:00:00 ET)'
+        description: 'YYYY-MM-DD HH:MM:SS; blank = today 19:00:00 ET'
         required: false
         default: ''
+      recon:
+        description: 'Skip direct POST; fetch detail + replay form (recommended until we have one observed success)'
+        required: false
+        default: 'true'
   schedule:
-    # Mon and Thu at 22:17 UTC = 6:17 PM EDT.
-    # Off-the-hour by design: GitHub Actions skips/delays scheduled triggers
-    # most often at :00 and :30 (busy minutes). :17 is comfortably between.
-    # NOTE: when DST ends in November, this becomes 5:17 PM EST — adjust to
-    # '17 23 * * 1,4' for the EST half of the year.
-    - cron: '17 22 * * 1,4'
+    # Daily at 21:00 UTC = 5:00 PM EDT / 4:00 PM EST.
+    # Two hours before the 7 PM ET release. Even with a 90-min GH delay
+    # the job starts by 22:30 UTC and busy-waits 30+ min to 23:00 UTC.
+    - cron: '0 21 * * *'
 
 concurrency:
   group: psfc-book
@@ -38,9 +46,9 @@ concurrency:
 jobs:
   book:
     runs-on: ubuntu-latest
-    # 60 min covers: watcher dispatch at 22:23 UTC + GH Actions startup
-    # delay (typically 5-30 min) + busy-wait to 23:00 UTC + 5s of polling.
-    timeout-minutes: 60
+    # Up to ~2.5 h between the scheduled cron and the 7 PM ET release,
+    # plus polling and post-mortem.
+    timeout-minutes: 180
     env:
       PSFC_USER: ${{ secrets.PSFC_USER }}
       PSFC_PASS: ${{ secrets.PSFC_PASS }}
@@ -55,43 +63,63 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
+      - name: Watch — check home page for a release today
+        id: watch
+        run: |
+          python psfc_book.py watch --dump-dir ./psfc_dumps
+
       - name: Resolve booking parameters
-        id: dates
-        # Inputs override; otherwise default to "today ET" semantics.
+        id: params
+        # Dispatch inputs override the home-page check. If after resolution
+        # there is no target, exit cleanly — nothing to book.
         run: |
           set -euo pipefail
           ANCHOR='${{ inputs.anchor }}'
-          [ -z "$ANCHOR" ] && ANCHOR=$(TZ=America/New_York date +%Y-%m-%d)
+          [ -z "$ANCHOR" ] && ANCHOR='${{ steps.watch.outputs.anchor }}'
           TARGET='${{ inputs.target }}'
-          [ -z "$TARGET" ] && TARGET=$(TZ=America/New_York date -d '+13 days' +'%-m/%-d/%Y')
+          [ -z "$TARGET" ] && TARGET='${{ steps.watch.outputs.target }}'
           FIRE_AT='${{ inputs.fire_at }}'
-          [ -z "$FIRE_AT" ] && FIRE_AT="$ANCHOR 19:00:00"
+          [ -z "$FIRE_AT" ] && FIRE_AT='${{ steps.watch.outputs.fire_at }}'
           WEEK='${{ inputs.week }}'
-          [ -z "$WEEK" ] && WEEK=1
+          [ -z "$WEEK" ] && WEEK='${{ steps.watch.outputs.week }}'
+          RECON='${{ inputs.recon }}'
+          [ -z "$RECON" ] && RECON='true'
+
+          if [ -z "$TARGET" ]; then
+            echo "No release scheduled today and no manual target; exiting clean."
+            echo "go=false" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "go=true"          | tee -a "$GITHUB_OUTPUT"
           echo "anchor=$ANCHOR"   | tee -a "$GITHUB_OUTPUT"
           echo "target=$TARGET"   | tee -a "$GITHUB_OUTPUT"
           echo "fire_at=$FIRE_AT" | tee -a "$GITHUB_OUTPUT"
           echo "week=$WEEK"       | tee -a "$GITHUB_OUTPUT"
+          echo "recon=$RECON"     | tee -a "$GITHUB_OUTPUT"
 
       - name: Book
-        id: book
+        if: steps.params.outputs.go == 'true'
         run: |
+          RECON_FLAG=""
+          [ '${{ steps.params.outputs.recon }}' = 'true' ] && RECON_FLAG="--recon"
           python psfc_book.py book \
-            --week '${{ steps.dates.outputs.week }}' \
-            --target '${{ steps.dates.outputs.target }}' \
-            --anchor '${{ steps.dates.outputs.anchor }}' \
-            --fire-at '${{ steps.dates.outputs.fire_at }}' \
+            $RECON_FLAG \
+            --week  '${{ steps.params.outputs.week }}' \
+            --target '${{ steps.params.outputs.target }}' \
+            --anchor '${{ steps.params.outputs.anchor }}' \
+            --fire-at '${{ steps.params.outputs.fire_at }}' \
             --tz America/New_York \
             --lead-ms 200 --poll-ms 80 --max-attempts 60 \
             --dump-dir ./psfc_dumps
 
       - name: Scout (post-mortem if booking missed)
-        if: failure()
+        if: failure() && steps.params.outputs.go == 'true'
         run: |
           python psfc_book.py scout \
-            --week '${{ steps.dates.outputs.week }}' \
-            --anchor '${{ steps.dates.outputs.anchor }}' \
-            --target '${{ steps.dates.outputs.target }}' \
+            --week  '${{ steps.params.outputs.week }}' \
+            --anchor '${{ steps.params.outputs.anchor }}' \
+            --target '${{ steps.params.outputs.target }}' \
             --dump-dir ./psfc_dumps
 
       - name: Upload dumps
