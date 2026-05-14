@@ -1,0 +1,58 @@
+name: PSFC sweep
+# Hourly scan of the calendar for any open slot — a cancellation, or a
+# release we missed for non-obvious reasons. Members can cancel up to
+# 11:59 PM the night before; when they do, the slot becomes claimable
+# again. Most cron firings find nothing and exit in ~15 seconds.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (report only, do not claim)'
+        required: false
+        default: 'false'
+      weeks:
+        description: 'Calendar weeks ahead to scan (1-4)'
+        required: false
+        default: '2'
+  schedule:
+    # Hourly at :07. The off-the-hour minute is the usual reliability hedge.
+    - cron: '7 * * * *'
+
+concurrency:
+  group: psfc-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PSFC_USER: ${{ secrets.PSFC_USER }}
+      PSFC_PASS: ${{ secrets.PSFC_PASS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Sweep
+        run: |
+          DRY=""
+          [ '${{ inputs.dry_run }}' = 'true' ] && DRY="--dry-run"
+          WEEKS='${{ inputs.weeks }}'
+          [ -z "$WEEKS" ] && WEEKS=2
+          python psfc_book.py sweep $DRY --weeks "$WEEKS" --dump-dir ./psfc_dumps
+
+      - name: Upload dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-${{ github.run_id }}
+          path: psfc_dumps/
+          retention-days: 14

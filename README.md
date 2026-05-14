@@ -1,6 +1,7 @@
 # psfc-book
 
 [![book](https://github.com/ltiao/psfc-book/actions/workflows/book.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/book.yml)
+[![sweep](https://github.com/ltiao/psfc-book/actions/workflows/sweep.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/sweep.yml)
 [![smoke](https://github.com/ltiao/psfc-book/actions/workflows/smoke.yml/badge.svg)](https://github.com/ltiao/psfc-book/actions/workflows/smoke.yml)
 
 > _"Be patient, wait for them to ripen. Be brave and try something new."_
@@ -53,7 +54,7 @@ exactly 19:00:00 ET, and writes everything down for posterity.
 
 ## Quick start — GitHub Actions
 
-There are two workflows.
+There are three workflows.
 
 - **`book.yml`** runs daily at 21:00 UTC, two hours before the 7 PM ET
   release moment. It logs in, fetches the home page, and parses
@@ -62,10 +63,17 @@ There are two workflows.
   announced minute and books. The two-hour lead is not paranoia: GitHub
   Actions' scheduled triggers are routinely delayed by forty-five to
   ninety minutes, and a tighter margin loses the slot.
+- **`sweep.yml`** runs hourly. It scans the next two calendar weeks for
+  any currently-open slot — a cancellation, or a release we missed —
+  and claims it via form-replay if it finds one. Members can cancel up
+  to 11:59 PM the night before their orientation, and the resulting
+  re-opened slot is watched by considerably fewer people at, say,
+  Wednesday 2 PM than at a release moment. Most firings find nothing
+  and exit in fifteen seconds.
 - **`smoke.yml`** is a manual sanity check. It logs in, fetches the
   calendar, fetches the home page, and asserts that we still recognize
   what comes back. Run it after touching the parser, or for the
-  reassurance of seeing both steps go green.
+  reassurance of seeing all three steps go green.
 
 By default the booking step runs in **recon mode**, in which the script
 fetches the slot's detail page, parses the form there, and replays it.
@@ -123,6 +131,19 @@ intervals, claims the first open slot it finds, and exits.
 Exit codes: `0` you have an orientation; `1` your password is wrong;
 `2` the booking page has no form, and refunds are not offered;
 `3` you do not have an orientation.
+
+### `sweep`
+
+```bash
+python psfc_book.py sweep --weeks 2
+```
+
+Scans the next N calendar weeks for any currently-open slot and claims
+it via form-replay if found. The second-chance path that sidesteps the
+release race entirely — most cancellations land on Tuesday afternoons,
+not Thursday evenings, and the cohort watching at those moments is
+smaller. Designed to run on an hourly cron; most firings exit in
+fifteen seconds having found everything taken.
 
 ### `scout`
 
@@ -221,9 +242,10 @@ which is the only setting any user has ever needed.
 ## Files
 
 ```
-psfc_book.py                       Typer CLI: book, scout, home, watch
+psfc_book.py                       Typer CLI: book, sweep, scout, home, watch
 requirements.txt                   typer, requests, beautifulsoup4, lxml, rich
 .github/workflows/book.yml         daily watch-then-book; one job
+.github/workflows/sweep.yml        hourly cancellation/missed-release watcher
 .github/workflows/smoke.yml        manual end-to-end credential and parser check
 ```
 

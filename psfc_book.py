@@ -405,6 +405,88 @@ def book(
 
 
 @app.command()
+def sweep(
+    weeks: int = typer.Option(2, "--weeks", min=1, max=4,
+                              help="Calendar weeks ahead to scan (anchor=today)."),
+    target: Optional[str] = typer.Option(
+        None, "--target", "-t",
+        help="Only consider slots whose day-label matches this substring."),
+    tz: str = typer.Option("America/New_York", "--tz"),
+    dry_run: bool = typer.Option(False, "--dry-run/--live",
+                                 help="Dry run: report open slots but don't claim."),
+    dump_dir: Path = typer.Option(Path("./psfc_dumps"), "--dump-dir"),
+    user: str = typer.Option(..., envvar="PSFC_USER"),
+    password: str = typer.Option(..., envvar="PSFC_PASS",
+                                 hide_input=True, prompt=False),
+):
+    """Scan the calendar for any currently-open slot (cancellation, or a
+    release we missed) and claim it via form-replay if found.
+
+    Designed to run on an hourly cron between releases. Most firings will
+    find nothing and exit in a second or two."""
+    s = requests.Session()
+    s.headers["User-Agent"] = "Mozilla/5.0"
+    rec = Recorder(dump_dir, "sweep", {
+        "command": "sweep", "weeks": weeks, "target": target,
+        "dry_run": dry_run, "tz": tz,
+    })
+    with console.status("[bold green]logging in…"): login(s, user, password)
+
+    anchor = datetime.now(ZoneInfo(tz)).date().isoformat()
+    found: Optional[dict] = None
+
+    for week in range(weeks):
+        cal_url = f"{BASE}/calendar/{week}/0/0/{anchor}/"
+        r = s.get(cal_url, timeout=10); r.raise_for_status()
+        rec.write(f"calendar_w{week}.html", r.text)
+        shifts = harvest_shifts(r.text, target)
+        rec.write(f"shifts_w{week}.json",
+                  json.dumps(shifts, indent=2, default=str))
+        opens = [sh for sh in shifts if sh["open"] and sh["href"]]
+        taken = sum(1 for sh in shifts if "worker" in sh["states"])
+        log.info(f"week {week}: [green]{len(opens)} open[/], {taken} taken, "
+                 f"{len(shifts)} total")
+        if opens and not found:
+            sh = opens[0]
+            found = {"href": sh["href"], "day": sh["day"], "cal_url": cal_url}
+
+    if not found:
+        log.info("[dim]nothing open — exiting clean[/]")
+        rec.finalize()
+        return
+
+    log.info(f"[bold green]OPEN SLOT[/]: {found['day']} → {found['href']}")
+    rec.meta.found_slot_url = found["href"]
+    rec.meta.found_day = found["day"]
+
+    if dry_run:
+        log.info("[yellow]dry run; not claiming[/]")
+        rec.finalize()
+        return
+
+    # Claim via form-replay (same path as `book --recon`).
+    rec.meta.fallback_used = True
+    resp = fallback_book(s, found["href"], found["cal_url"], rec)
+    soup = BeautifulSoup(resp.text, "lxml")
+    msg_el = soup.select_one("ul.messages") or soup.find(["h2", "h3"])
+    msg = msg_el.get_text(" ", strip=True) if msg_el else "(no message)"
+    rec.meta.booked_status = resp.status_code
+    rec.meta.booked_message = msg
+
+    body = Table.grid(padding=(0, 1))
+    body.add_column(style="bold"); body.add_column()
+    body.add_row("status", str(resp.status_code))
+    body.add_row("day",    found["day"])
+    body.add_row("slot",   found["href"])
+    body.add_row("message", msg)
+    body.add_row("dumps",  str(rec.dir))
+    style = "green" if resp.status_code in (200, 302) else "red"
+    console.print(Panel(body, title="[bold]Sweep result", border_style=style))
+
+    rec.finalize()
+
+
+@app.command()
 def scout(
     week: int = typer.Option(..., "--week", "-w"),
     anchor: str = typer.Option("2026-05-07", "--anchor"),
